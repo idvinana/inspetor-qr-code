@@ -11,7 +11,7 @@
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   
   <!-- Estilos Personalizados -->
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="p-4 md:p-8">
 
@@ -213,7 +213,7 @@
   <!-- LÓGICA JAVASCRIPT INTEGRADA                                           -->
   <!-- ===================================================================== -->
   <script>
-    const API_URL = 'http://127.0.0.1:8000';
+    const API_URL = window.location.origin;
     let html5QrCode = null;
 
     // Inicialização da Página
