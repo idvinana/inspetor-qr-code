@@ -3,6 +3,8 @@ import cbor2
 import json
 import re
 import sqlite3
+import os
+from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, HTTPException, status
@@ -55,14 +57,16 @@ _CHAVE_PUBLICA = _CHAVE_PRIVADA.public_key()
 def startup_event():
     init_db()
 
-# Configura a pasta static
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Define o caminho absoluto da pasta raiz do projeto
+BASE_DIR = Path(__file__).resolve().parent
 
-# Redireciona quem acessa o link principal (/) para o HTML
-@app.get("/")
-def home():
-    return FileResponse("static/inspetor_qr.html")
+# Monta a pasta static usando o caminho absoluto
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
+@app.get("/", include_in_schema=False)
+def servir_frontend():
+    return FileResponse(BASE_DIR / "static" / "inspetor_qr.html")
+    
 # ==============================================================================
 # 2. SCHEMAS E MODELOS
 # ==============================================================================
