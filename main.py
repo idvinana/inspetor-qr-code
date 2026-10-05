@@ -1,117 +1,130 @@
 import base45
 import cbor2
-import os
+import json
+import re
+import sqlite3
+from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from cryptography.hazmat.primitives.asymmetric import ec, utils
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 
 # ==============================================================================
-# 1. CONFIGURAÇÃO DA APLICAÇÃO E CORS
+# 1. CONFIGURAÇÃO DA APLICAÇÃO E BANCO DE DADOS
 # ==============================================================================
 app = FastAPI(
-    title="API de Autenticação de QR Code de Lote",
-    description="Serviço REST para validação offline/online de assinaturas criptográficas ECDSA P-256.",
-    version="1.0.0"
+    title="API de Autenticação Anti-Clonagem - Roko Ikigai",
+    description="Serviço REST com verificação criptográfica ECDSA e controle de histórico de leituras.",
+    version="2.0.0"
 )
 
-# Libera CORS para permitir requisições de leitores Web / PWA / Mobile
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, restringir para seus domínios
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ==============================================================================
-# 2. CARREGAMENTO DA CHAVE PÚBLICA DA FÁBRICA
-# ==============================================================================
-# Chave pública fictícia para teste em desenvolvimento (substitua pelo seu PEM real)
-CHAVE_PUBLIC_PEM_TESTE = """-----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE24uR8w2yG... (sua_chave_publica_aqui)
------END PUBLIC KEY-----"""
+DB_FILE = "validacoes.db"
 
-# Em produção, você pode carregar de uma variável de ambiente ou arquivo PEM
-CHAVE_PUBLICA: Optional[ec.EllipticCurvePublicKey] = None
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS leituras (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gtin TEXT NOT NULL,
+            lote TEXT NOT NULL,
+            serial TEXT NOT NULL,
+            data_leitura TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+_CHAVE_PRIVADA = ec.generate_private_key(ec.SECP256R1())
+_CHAVE_PUBLICA = _CHAVE_PRIVADA.public_key()
 
 @app.on_event("startup")
 def startup_event():
-    global CHAVE_PUBLICA
-    # Tenta carregar a chave de uma variável de ambiente se existir
-    pem_bytes = os.getenv("FABRICA_PUBLIC_KEY_PEM", "").encode('utf-8')
-    if not pem_bytes:
-        # Para fins de execução local/demo, se não houver env var, gera uma nova chave
-        global _private_key_demo
-        _private_key_demo = ec.generate_private_key(ec.SECP256R1())
-        CHAVE_PUBLICA = _private_key_demo.public_key()
-        print("⚠️ [DEV] Gerada nova Chave Pública temporária para os testes da API.")
-    else:
-        CHAVE_PUBLICA = serialization.load_pem_public_key(pem_bytes)
-        print("✅ Chave Pública da Fábrica carregada com sucesso!")
+    init_db()
+
+# Configura a pasta static
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Redireciona quem acessa o link principal (/) para o HTML
+@app.get("/")
+def home():
+    return FileResponse("static/inspetor_qr.html")
 
 # ==============================================================================
-# 3. SCHEMAS PYDANTIC (MODELOS DE REQUISIÇÃO E RESPOSTA)
+# 2. SCHEMAS E MODELOS
 # ==============================================================================
 class ValidarQRRequest(BaseModel):
-    qr_string: str = Field(
-        ...,
-        description="String lida pelo scanner/câmera",
-        example="LOTE:24.G884A3N...PAYLOAD_BASE45..."
-    )
+    qr_string: str = Field(..., description="String lida pelo scanner/câmera ou JSON colado")
 
 class DadosLote(BaseModel):
-    gtin: str = Field(..., description="Código do produto (GTIN/EAN-13)")
-    lote: str = Field(..., description="Identificador único do lote")
-    data_fabricacao: str = Field(..., description="Data de fabricação (YYYY-MM-DD)")
-    data_validade: str = Field(..., description="Data de validade (YYYY-MM-DD)")
+    gtin: str
+    lote: str
+    serial: str
+    data_fabricacao: str
+    data_validade: str
+    total_leituras: int
 
 class ValidarQRResponse(BaseModel):
-    autentico: bool = Field(..., description="Indica se a assinatura matemática é válida")
-    status_code: str = Field(..., description="Código do resultado (VALIDO, FRAUDE, FORMATO_INVALIDO)")
-    mensagem: str = Field(..., description="Mensagem legível para exibição na tela do operador")
-    dados: Optional[DadosLote] = Field(None, description="Dados decodificados do lote se o QR for autêntico")
+    autentico: bool
+    status_code: str
+    mensagem: str
+    dados: Optional[DadosLote] = None
+
+# ==============================================================================
+# 3. EXTRAÇÃO E HIGIENIZAÇÃO DE PAYLOAD
+# ==============================================================================
+def extrair_payload_limpo(texto_bruto: str) -> str:
+    texto = texto_bruto.strip()
+    if texto.startswith("{") and texto.endswith("}"):
+        try:
+            dados_json = json.loads(texto)
+            if "qr_string" in dados_json:
+                texto = dados_json["qr_string"]
+        except Exception:
+            pass
+
+    match = re.search(r'(LOTE:|SERIE:)[0-9A-Z $%*+\-./:]+', texto.upper())
+    if match:
+        return match.group(0).strip()
+
+    return texto.replace('"', '').replace("'", "").replace("\n", "").replace("\r", "").strip().upper()
 
 # ==============================================================================
 # 4. ENDPOINTS DA API
 # ==============================================================================
 @app.get("/health", tags=["Infraestrutura"])
 def health_check():
-    """Endpoint para monitoramento (Load Balancer / Kubernetes)."""
-    return {"status": "ok", "servico": "validador-qr-lote"}
-
+    return {"status": "ok", "servico": "validador-qr-anti-clonagem"}
 
 @app.post("/api/v1/validar-qr", response_model=ValidarQRResponse, tags=["Validação"])
 def validar_qr_code(body: ValidarQRRequest):
-    """
-    Recebe a string lida do QR Code de Lote, decodifica a estrutura Base45/CBOR
-    e verifica matematicamente a assinatura ECDSA P-256 da fábrica.
-    """
-    if not CHAVE_PUBLICA:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Chave pública da fábrica não foi inicializada no servidor."
-        )
+    string_processada = extrair_payload_limpo(body.qr_string)
 
-    qr_str = body.qr_string.strip()
-
-    # 1. Tratar o prefixo
-    if qr_str.startswith("LOTE:"):
-        payload_b45 = qr_str[5:]
+    if string_processada.startswith("LOTE:"):
+        payload_b45 = string_processada[5:].strip()
+    elif string_processada.startswith("SERIE:"):
+        payload_b45 = string_processada[6:].strip()
     else:
-        payload_b45 = qr_str
+        payload_b45 = string_processada.strip()
 
-    # 2. Tentar decodificar Base45 -> CBOR
     try:
         envelope_bytes = base45.b45decode(payload_b45)
         envelope = cbor2.loads(envelope_bytes)
-        
         dados_lote_raw = envelope[1]
         sig_raw_64 = envelope[2]
-        
         dados_cbor_bytes = cbor2.dumps(dados_lote_raw)
     except Exception as e:
         return ValidarQRResponse(
@@ -121,54 +134,133 @@ def validar_qr_code(body: ValidarQRRequest):
             dados=None
         )
 
-    # 3. Converter a assinatura para o formato DER exigido pelo 'cryptography'
     try:
         r = int.from_bytes(sig_raw_64[:32], 'big')
         s = int.from_bytes(sig_raw_64[32:], 'big')
         sig_der = utils.encode_dss_signature(r, s)
 
-        # 4. Verificação Matemática da Assinatura Digital
-        CHAVE_PUBLICA.verify(
+        _CHAVE_PUBLICA.verify(
             sig_der,
             dados_cbor_bytes,
             ec.ECDSA(hashes.SHA256())
         )
-        
-        # Estruturar os dados no modelo Pydantic
-        dados_formatados = DadosLote(
-            gtin=str(dados_lote_raw.get(1, "")),
-            lote=str(dados_lote_raw.get(2, "")),
-            data_fabricacao=str(dados_lote_raw.get(3, "")),
-            data_validade=str(dados_lote_raw.get(4, ""))
-        )
-
-        return ValidarQRResponse(
-            autentico=True,
-            status_code="VALIDO",
-            mensagem="✅ Produto autêntico e assinado digitalmente pela fábrica.",
-            dados=dados_formatados
-        )
-
     except InvalidSignature:
         return ValidarQRResponse(
             autentico=False,
             status_code="FRAUDE",
-            mensagem="❌ ALERTA DE FRAUDE: A assinatura digital é inválida! Este QR Code foi alterado ou clonado.",
+            mensagem="❌ ALERTA DE FRAUDE: Assinatura digital inválida! QR Code alterado.",
             dados=None
         )
 
+    gtin = str(dados_lote_raw.get(1, ""))
+    lote = str(dados_lote_raw.get(2, ""))
+    data_fab = str(dados_lote_raw.get(3, ""))
+    data_val = str(dados_lote_raw.get(4, ""))
+    serial = str(dados_lote_raw.get(5, "SEM-SERIAL"))
 
-# Helper endpoint para gerar payloads de teste rápidos via Swagger
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT COUNT(*) FROM leituras WHERE gtin = ? AND lote = ? AND serial = ?",
+        (gtin, lote, serial)
+    )
+    leituras_anteriores = cursor.fetchone()[0]
+
+    cursor.execute(
+        "INSERT INTO leituras (gtin, lote, serial, data_leitura) VALUES (?, ?, ?, ?)",
+        (gtin, lote, serial, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
+    conn.commit()
+    conn.close()
+
+    total_leituras = leituras_anteriores + 1
+
+    if total_leituras == 1:
+        return ValidarQRResponse(
+            autentico=True,
+            status_code="VALIDO",
+            mensagem="✅ Produto autêntico! Primeira leitura registrada no sistema.",
+            dados=DadosLote(
+                gtin=gtin,
+                lote=lote,
+                serial=serial,
+                data_fabricacao=data_fab,
+                data_validade=data_val,
+                total_leituras=total_leituras
+            )
+        )
+    else:
+        return ValidarQRResponse(
+            autentico=True,
+            status_code="SUSPEITA_CLONAGEM",
+            mensagem=f"⚠️ ALERTA DE SUSPEITA DE CLONAGEM: Este produto específico já foi lido {total_leituras} vezes!",
+            dados=DadosLote(
+                gtin=gtin,
+                lote=lote,
+                serial=serial,
+                data_fabricacao=data_fab,
+                data_validade=data_val,
+                total_leituras=total_leituras
+            )
+        )
+
 @app.post("/api/v1/dev/gerar-qr-teste", tags=["Desenvolvimento"])
-def gerar_qr_teste(gtin: str = "7891234567890", lote: str = "LOTE-2026-VAL500"):
-    """Gera um QR Code válido assinado com a chave privada de testes do servidor."""
-    global _private_key_demo
-    dados = {1: gtin, 2: lote, 3: "2026-09-24", 4: "2028-09-24"}
+def gerar_qr_teste(
+    gtin: str = "7891234567890",
+    lote: str = "LOTE-2026-VAL500",
+    serial: str = "SN-00010042"
+):
+    dados = {
+        1: gtin,
+        2: lote,
+        3: "2026-09-24",
+        4: "2028-09-24",
+        5: serial
+    }
     dados_cbor = cbor2.dumps(dados)
-    
-    sig_der = _private_key_demo.sign(dados_cbor, ec.ECDSA(hashes.SHA256()))
+
+    sig_der = _CHAVE_PRIVADA.sign(dados_cbor, ec.ECDSA(hashes.SHA256()))
     r, s = utils.decode_dss_signature(sig_der)
     sig_64 = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
-    
+
     qr_str = "LOTE:" + base45.b45encode(cbor2.dumps({1: dados, 2: sig_64})).decode('utf-8')
     return {"qr_string": qr_str}
+
+@app.get("/api/v1/dev/historico", tags=["Desenvolvimento"])
+def ver_historico_leituras():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, gtin, lote, serial, data_leitura FROM leituras ORDER BY id DESC")
+    linhas = cursor.fetchall()
+    conn.close()
+
+    historico = [
+        {"id": l[0], "gtin": l[1], "lote": l[2], "serial": l[3], "data_leitura": l[4]}
+        for l in linhas
+    ]
+    return {"total_registros": len(historico), "leituras": historico}
+
+@app.delete("/api/v1/dev/leituras/{leitura_id}", tags=["Desenvolvimento"])
+def deletar_leitura_por_id(leitura_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM leituras WHERE id = ?", (leitura_id,))
+    linhas_afetadas = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    if linhas_afetadas == 0:
+        raise HTTPException(status_code=404, detail="ID não encontrado no banco de dados.")
+
+    return {"mensagem": f"✅ Linha ID {leitura_id} excluída com sucesso!"}
+
+@app.delete("/api/v1/dev/limpar-historico", tags=["Desenvolvimento"])
+def limpar_todo_historico():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM leituras")
+    conn.commit()
+    conn.close()
+
+    return {"mensagem": "🗑️ Todo o histórico de leituras foi apagado com sucesso!"}
