@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inspetor de QR Code | Roko Ikigai</title>
+  
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  
+  <!-- Estilos Personalizados -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="p-4 md:p-8">
+
+  <!-- ===================================================================== -->
+  <!-- CABEÇALHO DA APLICAÇÃO                                                -->
+  <!-- ===================================================================== -->
+  <header class="max-w-7xl mx-auto mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pb-6 border-b border-slate-800">
+    
+    <!-- Logo e Título -->
+    <div class="flex items-center gap-4">
+      <div class="p-3 bg-sky-950/60 border border-sky-500/30 rounded-xl shadow-lg shadow-sky-950">
+        <i data-lucide="qr-code" class="w-8 h-8 text-sky-400"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-3">
+          <h1 class="text-2xl font-bold text-white tracking-wide">Roko Ikigai</h1>
+          <span class="text-xs font-mono px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800">AUTHENTICITY SYSTEM</span>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-400 mt-1">
+          <span class="font-semibold text-slate-200">Inspetor de QR Code</span>
+          <span>•</span>
+          <span>Anti-Clonagem</span>
+          <span>•</span>
+          <span class="inline-flex items-center gap-1 text-emerald-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Conectado ao Servidor Oficial (FastAPI)
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status da API e Relógio -->
+    <div class="flex items-center gap-4">
+      <div id="serverStatusCard" class="flex items-center gap-3 bg-slate-900/80 px-4 py-2 rounded-xl border border-slate-800 text-xs">
+        <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" id="statusDot"></span>
+        <div>
+          <p id="statusText" class="font-bold text-slate-200">A verificar API...</p>
+          <p class="text-[10px] text-slate-500" id="subStatusText">Servidor Offline</p>
+        </div>
+      </div>
+
+      <div class="text-right text-xs text-slate-400 border-l border-slate-800 pl-4 hidden md:block">
+        <p id="clockDate" class="font-medium text-slate-300">-- de ---. de ----</p>
+        <p id="clockTime" class="font-mono text-sky-400 text-sm">--:--:--</p>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- PAINEL PRINCIPAL (GRID 2 COLUNAS)                                      -->
+  <!-- ===================================================================== -->
+  <main class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
+    
+    <!-- COLUNA 1: CAPTURA E ENTRADA DE DADOS -->
+    <section class="panel-card p-6 flex flex-col justify-between">
+      <div>
+        <!-- Cabeçalho do Passo 1 -->
+        <div class="flex items-center gap-3 mb-6">
+          <span class="w-8 h-8 rounded-full bg-sky-500 text-slate-950 font-bold flex items-center justify-center text-sm shadow-lg shadow-sky-500/20">1</span>
+          <div>
+            <h2 class="text-lg font-bold text-white">Captura / Entrada</h2>
+            <p class="text-xs text-slate-400">Escaneie um QR Code ou cole o payload manualmente.</p>
+          </div>
+        </div>
+
+        <!-- Seletor de Abas (Tabs) -->
+        <div class="grid grid-cols-2 gap-2 p-1 bg-slate-950/60 rounded-xl border border-slate-800 mb-6">
+          <button id="tabScan" onclick="alternarAba('scan')" class="tab-btn active py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2">
+            <i data-lucide="scan" class="w-4 h-4"></i> Escaneia QR Code
+          </button>
+          <button id="tabManual" onclick="alternarAba('manual')" class="tab-btn py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2">
+            <i data-lucide="code" class="w-4 h-4"></i> Inserir Manualmente
+          </button>
+        </div>
+
+        <!-- Conteúdo Aba 1: Câmera Scanner -->
+        <div id="containerScanner" class="relative mb-6">
+          <div id="reader" class="overflow-hidden rounded-xl border border-slate-800 min-h-[240px] flex items-center justify-center relative">
+            <div id="scannerPlaceholder" class="text-center p-6">
+              <i data-lucide="focus" class="w-12 h-12 text-sky-500/50 mx-auto mb-2 animate-pulse"></i>
+              <p class="text-sm font-semibold text-slate-300">Aponte a câmara para o QR Code</p>
+              <p class="text-xs text-slate-500 mt-1">O código será lido automaticamente</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Botão de Teste Automático -->
+        <button onclick="gerarETestarAutomatico()" class="btn-purple-gradient w-full mb-6 py-3 px-4 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-2">
+          <i data-lucide="flask-conical" class="w-4 h-4"></i>
+          <span>Gerar e Validar QR de Teste Automático</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 ml-auto"></i>
+        </button>
+
+        <!-- Divisor -->
+        <div class="relative flex py-2 items-center mb-6">
+          <div class="flex-grow border-t border-slate-800"></div>
+          <span class="flex-shrink mx-4 text-[11px] text-slate-500 uppercase tracking-widest font-mono">ou cole o payload abaixo</span>
+          <div class="flex-grow border-t border-slate-800"></div>
+        </div>
+
+        <!-- Entrada de Texto / Textarea -->
+        <div class="relative mb-4">
+          <div class="absolute top-3 left-3 text-slate-500">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <textarea id="inputQrText" rows="3" oninput="atualizarContador()" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl py-2.5 pl-10 pr-12 text-xs font-mono text-sky-400 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition" placeholder="Cole o texto, JSON ou URL aqui..."></textarea>
+          <span id="charCounter" class="absolute bottom-3 right-3 text-[10px] font-mono text-slate-600">0/2000</span>
+        </div>
+      </div>
+
+      <!-- Botão de Submissão -->
+      <button onclick="validarNaAPI()" class="btn-blue-gradient w-full py-3 px-4 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2">
+        <i data-lucide="zap" class="w-4 h-4"></i>
+        <span>Validar na API Oficial</span>
+        <i data-lucide="chevron-right" class="w-4 h-4 ml-auto"></i>
+      </button>
+    </section>
+
+    <!-- COLUNA 2: RESPOSTA DA API E ATRIBUTOS -->
+    <section class="panel-card p-6 flex flex-col justify-between">
+      <div>
+        <!-- Cabeçalho do Passo 2 -->
+        <div class="flex items-center gap-3 mb-6">
+          <span class="w-8 h-8 rounded-full bg-sky-500 text-slate-950 font-bold flex items-center justify-center text-sm shadow-lg shadow-sky-500/20">2</span>
+          <div>
+            <h2 class="text-lg font-bold text-white">Resposta da API</h2>
+            <p class="text-xs text-slate-400">Os resultados da validação serão exibidos aqui.</p>
+          </div>
+        </div>
+
+        <!-- Card de Estado de Validação -->
+        <div id="statusCard" class="inner-card p-6 mb-6 flex items-center gap-5 border-l-4 border-l-slate-600">
+          <div id="statusIconBg" class="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center flex-shrink-0">
+            <i id="statusIcon" data-lucide="shield" class="w-8 h-8 text-slate-500"></i>
+          </div>
+          <div>
+            <span id="statusBadge" class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-400 mb-1">
+              Aguardando Leitura
+            </span>
+            <h3 id="statusTitle" class="text-lg font-bold text-white">Nenhum QR Code analisado</h3>
+            <p id="statusDesc" class="text-xs text-slate-400 mt-1">Após a leitura ou inserção do payload, os resultados retornados pelo servidor serão exibidos aqui.</p>
+          </div>
+        </div>
+
+        <!-- Tabela de Atributos Decodificados -->
+        <div class="mb-4">
+          <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="layers" class="w-4 h-4 text-sky-400"></i>
+            <h3 class="text-sm font-semibold text-slate-200">Atributos Decodificados</h3>
+          </div>
+
+          <div class="inner-card overflow-hidden">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-950/80 text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th class="p-3 font-semibold">Campo</th>
+                  <th class="p-3 font-semibold">Valor Retornado</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody" class="divide-y divide-slate-800/50 font-mono text-slate-300">
+                <tr class="table-row-custom"><td class="p-3 text-slate-500" colspan="2">Nenhum dado retornado.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rodapé do Card Direito -->
+      <div class="inner-card p-4 flex items-center justify-between border-slate-800/80">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-sky-950/50 rounded-lg border border-sky-800/40">
+            <i data-lucide="shield-check" class="w-5 h-5 text-sky-400"></i>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-slate-200">Sistema de autenticação e anti-clonagem</p>
+            <p class="text-[10px] text-slate-400">Tecnologia para garantir a originalidade dos seus produtos.</p>
+          </div>
+        </div>
+        <div class="text-right font-mono text-[11px] text-slate-500">
+          <p class="font-bold text-slate-400">Roko Ikigai</p>
+          <p class="text-[9px]">生き甲斐</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- RODAPÉ INFERIOR -->
+  <footer class="max-w-7xl mx-auto mt-8 pt-4 border-t border-slate-800/60 flex flex-col sm:flex-row justify-between items-center text-xs text-slate-500 gap-2">
+    <div>
+      <span class="font-semibold text-slate-400">Roko Ikigai</span> | Tecnologia × Autenticidade × Confiança
+    </div>
+    <div class="flex items-center gap-2 font-mono text-[11px]">
+      <i data-lucide="zap" class="w-3.5 h-3.5 text-sky-400"></i> Powered by FastAPI
+    </div>
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- LÓGICA JAVASCRIPT INTEGRADA                                           -->
+  <!-- ===================================================================== -->
+  <script>
+    const API_URL = 'http://127.0.0.1:8000';
+    let html5QrCode = null;
+
+    // Inicialização da Página
+    window.addEventListener('load', () => {
+      lucide.createIcons();
+      checarConexaoAPI();
+      iniciarRelogio();
+      setInterval(checarConexaoAPI, 10000);
+    });
+
+    // Relógio em Tempo Real
+    function iniciarRelogio() {
+      const update = () => {
+        const agora = new Date();
+        document.getElementById('clockDate').innerText = agora.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+        document.getElementById('clockTime').innerText = agora.toLocaleTimeString('pt-BR');
+      };
+      update();
+      setInterval(update, 1000);
+    }
+
+    // Verificação de Ligação à API
+    async function checarConexaoAPI() {
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      const subText = document.getElementById('subStatusText');
+
+      try {
+        const response = await fetch(`${API_URL}/health`);
+        if (response.ok) {
+          dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50";
+          text.innerText = "API Conectada";
+          text.className = "font-bold text-emerald-400";
+          subText.innerText = "Servidor Online";
+        }
+      } catch (e) {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-red-500 shadow-lg shadow-red-500/50";
+        text.innerText = "API Desconectada";
+        text.className = "font-bold text-red-400";
+        subText.innerText = "Verifique o Uvicorn";
+      }
+    }
+
+    // Alternar entre Abas de Scanner e Inserção Manual
+    function alternarAba(aba) {
+      const btnScan = document.getElementById('tabScan');
+      const btnManual = document.getElementById('tabManual');
+
+      if (aba === 'scan') {
+        btnScan.classList.add('active');
+        btnManual.classList.remove('active');
+        iniciarScanner();
+      } else {
+        btnManual.classList.add('active');
+        btnScan.classList.remove('active');
+        pararScanner();
+      }
+    }
+
+    // Iniciar Câmara Scanner
+    function iniciarScanner() {
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      }
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        (decodedText) => {
+          document.getElementById('inputQrText').value = decodedText;
+          atualizarContador();
+          validarNaAPI();
+        },
+        () => {}
+      ).catch(() => {});
+    }
+
+    // Parar Câmara Scanner
+    function pararScanner() {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop();
+      }
+    }
+
+    // Contador de Caracteres da Textarea
+    function atualizarContador() {
+      const text = document.getElementById('inputQrText').value;
+      document.getElementById('charCounter').innerText = `${text.length}/2000`;
+    }
+
+    // Gerar e Validar QR de Teste Automático
+    async function gerarETestarAutomatico() {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/dev/gerar-qr-teste`, { method: 'POST' });
+        const data = await res.json();
+        document.getElementById('inputQrText').value = data.qr_string;
+        atualizarContador();
+        validarNaAPI();
+      } catch (e) {
+        alert("Erro ao ligar ao servidor. Certifique-se de que o uvicorn está a correr!");
+      }
+    }
+
+    // Submeter e Validar na API
+    async function validarNaAPI() {
+      const qrString = document.getElementById('inputQrText').value.trim();
+      const statusCard = document.getElementById('statusCard');
+      const statusBadge = document.getElementById('statusBadge');
+      const statusTitle = document.getElementById('statusTitle');
+      const statusDesc = document.getElementById('statusDesc');
+      const statusIcon = document.getElementById('statusIcon');
+      const statusIconBg = document.getElementById('statusIconBg');
+      const tableBody = document.getElementById('tableBody');
+
+      if (!qrString) {
+        alert("Cole ou escaneie uma string de QR Code primeiro!");
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/api/v1/validar-qr`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ qr_string: qrString })
+        });
+
+        const resData = await response.json();
+
+        if (resData.autentico) {
+          const eClonado = resData.status_code === "SUSPEITA_CLONAGEM";
+
+          if (eClonado) {
+            statusCard.className = "inner-card p-6 mb-6 flex items-center gap-5 border-l-4 border-l-amber-500 bg-amber-950/20";
+            statusIconBg.className = "w-16 h-16 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center flex-shrink-0";
+            statusBadge.className = "inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 mb-1";
+            statusBadge.innerText = "⚠️ SUSPEITA DE CLONAGEM";
+            statusTitle.innerText = "QR Code Reutilizado";
+            statusTitle.className = "text-lg font-bold text-amber-400";
+            statusIcon.setAttribute('data-lucide', 'alert-triangle');
+            statusIcon.className = "w-8 h-8 text-amber-400";
+          } else {
+            statusCard.className = "inner-card p-6 mb-6 flex items-center gap-5 border-l-4 border-l-emerald-500 bg-emerald-950/20";
+            statusIconBg.className = "w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0";
+            statusBadge.className = "inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-1";
+            statusBadge.innerText = "✅ PRODUTO AUTÊNTICO";
+            statusTitle.innerText = "Assinatura Digital Válida";
+            statusTitle.className = "text-lg font-bold text-emerald-400";
+            statusIcon.setAttribute('data-lucide', 'shield-check');
+            statusIcon.className = "w-8 h-8 text-emerald-400";
+          }
+
+          statusDesc.innerText = resData.mensagem;
+
+          // Montagem da tabela com ícones
+          tableBody.innerHTML = `
+            <tr class="table-row-custom"><td class="p-3 font-semibold text-slate-400 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-sky-400"></i> Status</td><td class="p-3 font-bold ${eClonado ? 'text-amber-400' : 'text-emerald-400'}">${resData.status_code}</td></tr>
+            <tr class="table-row-custom"><td class="p-3 font-semibold text-slate-400 flex items-center gap-2"><i data-lucide="box" class="w-4 h-4 text-sky-400"></i> Produto (GTIN)</td><td class="p-3">${resData.dados.gtin}</td></tr>
+            <tr class="table-row-custom"><td class="p-3 font-semibold text-slate-400 flex items-center gap-2"><i data-lucide="tag" class="w-4 h-4 text-sky-400"></i> Lote</td><td class="p-3">${resData.dados.lote}</td></tr>
+            <tr class="table-row-custom"><td class="p-3 font-semibold text-slate-400 flex items-center gap-2"><i data-lucide="key" class="w-4 h-4 text-sky-400"></i> Número de Série</td><td class="p-3 text-sky-300 font-bold">${resData.dados.serial}</td></tr>
+            <tr class="table-row-custom"><td class="p-3 font-semibold text-slate-400 flex items-center gap-2"><i data-lucide="history" class="w-4 h-4 text-sky-400"></i> Total de Consultas</td><td class="p-3 font-bold">${resData.dados.total_leituras}ª leitura</td></tr>
+            <tr class="table-row-custom"><td class="p-3 font-semibold text-slate-400 flex items-center gap-2"><i data-lucide="calendar" class="w-4 h-4 text-sky-400"></i> Data de Fabricação</td><td class="p-3">${resData.dados.data_fabricacao}</td></tr>
+            <tr class="table-row-custom"><td class="p-3 font-semibold text-slate-400 flex items-center gap-2"><i data-lucide="calendar-off" class="w-4 h-4 text-sky-400"></i> Data de Validade</td><td class="p-3">${resData.dados.data_validade}</td></tr>
+          `;
+        } else {
+          statusCard.className = "inner-card p-6 mb-6 flex items-center gap-5 border-l-4 border-l-red-500 bg-red-950/20";
+          statusIconBg.className = "w-16 h-16 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center flex-shrink-0";
+          statusBadge.className = "inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 mb-1";
+          statusBadge.innerText = "❌ ERRO / FRAUDE";
+          statusTitle.innerText = resData.status_code;
+          statusTitle.className = "text-lg font-bold text-red-400";
+          statusDesc.innerText = resData.mensagem;
+          statusIcon.setAttribute('data-lucide', 'shield-alert');
+          statusIcon.className = "w-8 h-8 text-red-400";
+
+          tableBody.innerHTML = `<tr class="table-row-custom"><td class="p-3 text-red-400" colspan="2">A assinatura digital é inválida ou o QR Code está malformatado.</td></tr>`;
+        }
+
+        lucide.createIcons();
+      } catch (error) {
+        alert("Erro ao conectar com a API.");
+      }
+    }
+  </script>
+</body>
+</html>

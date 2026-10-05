@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+base45
+cbor2
+cryptography
+pydantic

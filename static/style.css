@@ -1,0 +1,112 @@
+/* ==========================================================================
+   ESTILOS GERAIS E PALETA DE CORES (ROKO IKIGAI THEME)
+   ========================================================================== */
+:root {
+  --bg-main: #060b19;
+  --bg-card: #0c1631;
+  --bg-card-border: #1a2954;
+  --bg-input: #081024;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --accent-blue: #0284c7;
+  --accent-blue-glow: rgba(2, 132, 199, 0.35);
+  --accent-purple: #6366f1;
+  --accent-purple-glow: rgba(99, 102, 241, 0.35);
+  --status-green: #10b981;
+  --status-amber: #f59e0b;
+  --status-red: #ef4444;
+}
+
+body {
+  background-color: var(--bg-main);
+  background-image: 
+    radial-gradient(circle at 50% 0%, #1e293b 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(14, 165, 233, 0.08) 0%, transparent 40%);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+/* Glassmorphism e Paineis */
+.panel-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  border-radius: 1rem;
+}
+
+.inner-card {
+  background: var(--bg-input);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 0.75rem;
+}
+
+/* Botões Customizados */
+.btn-purple-gradient {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  box-shadow: 0 4px 15px var(--accent-purple-glow);
+  transition: all 0.2s ease;
+}
+.btn-purple-gradient:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
+}
+
+.btn-blue-gradient {
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+  box-shadow: 0 4px 15px var(--accent-blue-glow);
+  transition: all 0.2s ease;
+}
+.btn-blue-gradient:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
+}
+
+/* Tab Navigation */
+.tab-btn {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+.tab-btn.active {
+  background: rgba(2, 132, 199, 0.15);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+/* Area de Leitura de QR Code */
+#reader {
+  border: 1px dashed rgba(56, 189, 248, 0.3) !important;
+  background-color: #030712 !important;
+}
+#reader video {
+  object-fit: cover !important;
+  border-radius: 0.5rem;
+}
+
+/* Custom Scrollbar */
+textarea::-webkit-scrollbar {
+  width: 6px;
+}
+textarea::-webkit-scrollbar-thumb {
+  background: var(--bg-card-border);
+  border-radius: 3px;
+}
+
+/* Tabela de Atributos */
+.table-row-custom {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  transition: background 0.15s ease;
+}
+.table-row-custom:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Animação do Escanear (Target corner lines) */
+.scan-corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-color: #38bdf8;
+}
